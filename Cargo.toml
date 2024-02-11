@@ -1,0 +1,10 @@
+[package]
+name = "plugin"
+version = "0.1.0"
+edition = "2021"
+[lib] 
+name="myplugin"
+crate-type = ["cdylib", "rlib"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+pmaapi = { path = "/home/banchen/文档/rust_demo/plugin_demo001" }
