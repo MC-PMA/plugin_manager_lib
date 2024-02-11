@@ -31,13 +31,6 @@ dependencies = [
 name = "plugin"
 version = "0.1.0"
 dependencies = [
- "pmaapi",
-]
-
-[[package]]
-name = "pmaapi"
-version = "0.1.0"
-dependencies = [
  "libloader",
 ]
 
