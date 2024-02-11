@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "plugin"
+name = "pmaapi"
 version = "0.1.0"
 dependencies = [
  "libloader",
