@@ -68,28 +68,27 @@ pub(crate) struct UcenterResult<T>(pub T);
 use libloader::libloading::{Library, Symbol};
 use std::{collections::HashMap, ffi::OsStr, fs, sync::Arc};
 
+
 pub struct PluginManager {
     path: String,
     plugin_hashmap: HashMap<String, Arc<Box<dyn PluginTrait>>>,
     loaded_libraries: Vec<Library>,
 }
 
-impl PluginManager {
-    /**
-     let path = "./plugins";
-     let mut app_extend_manager = PluginManager::new(path.to_owned());
-     app_extend_manager.load_all();
-     app_extend_manager.unload_all();
-    */
-    pub fn new(path: String) -> PluginManager {
-        fs::create_dir(&path).err();
-        PluginManager {
-            path,
+impl Default for PluginManager {
+    fn default() -> Self {
+        let plugin_manager=Self {
+            path: "./plugins".to_owned(),
             plugin_hashmap: HashMap::new(),
             loaded_libraries: Vec::new(),
-        }
+        };
+        fs::create_dir(&plugin_manager.path).err();
+        plugin_manager
     }
+}
 
+
+impl PluginManager {
     //插件目录下所有插件
     pub fn load_all(&mut self) -> PlguninResult<()> {
         let r = fs::read_dir(self.path.clone())
