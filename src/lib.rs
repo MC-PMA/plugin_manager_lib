@@ -1,11 +1,8 @@
-
 pub trait PluginTrait: Send + Sync {
     /// 注册插件
     fn register(&self) -> Plugin;
     /// 加载插件
     fn load(&self) {}
-    /// 重载插件
-    fn reload(&self) {}
     ///卸载插件
     fn unload(&self) {}
 }
@@ -32,61 +29,57 @@ impl Default for Plugin {
     }
 }
 
-impl Plugin {
-    /// set plugin name
-    fn set_name(&mut self, name: String) -> &Self {
-        self.name = name;
-        self
-    }
+// impl Plugin {
+//     /// set plugin name
+//     fn set_name(&mut self, name: String) -> &Self {
+//         self.name = name;
+//         self
+//     }
 
-    /// set plugin version
-    fn set_version(&mut self, version: String) -> &Self {
-        self.version = version;
-        self
-    }
+//     /// set plugin version
+//     fn set_version(&mut self, version: String) -> &Self {
+//         self.version = version;
+//         self
+//     }
 
-    /// set plugin author
-    fn set_author(&mut self, author: String) -> &Self {
-        self.author = author;
-        self
-    }
+//     /// set plugin author
+//     fn set_author(&mut self, author: String) -> &Self {
+//         self.author = author;
+//         self
+//     }
 
-    /// set plugin explain
-    fn set_explain(&mut self, explain: String) -> &Self {
-        self.explain = explain;
-        self
-    }
-}
+//     /// set plugin explain
+//     fn set_explain(&mut self, explain: String) -> &Self {
+//         self.explain = explain;
+//         self
+//     }
+// }
 
 pub enum PlguninResult<T> {
     Ok(T),
-    Err(T),
+    Err,
 }
 
-pub(crate) struct UcenterResult<T>(pub T);
-
 use libloader::libloading::{Library, Symbol};
-use std::{collections::HashMap, ffi::OsStr, fs, sync::Arc};
-
+use std::{collections::HashMap, fs, sync::Arc};
 
 pub struct PluginManager {
     path: String,
-    plugin_hashmap: HashMap<String, Arc<Box<dyn PluginTrait>>>,
+    plugins: HashMap<String, Arc<Box<dyn PluginTrait>>>,
     loaded_libraries: Vec<Library>,
 }
 
 impl Default for PluginManager {
     fn default() -> Self {
-        let plugin_manager=Self {
+        let plugin_manager = Self {
             path: "./plugins".to_owned(),
-            plugin_hashmap: HashMap::new(),
+            plugins: HashMap::new(),
             loaded_libraries: Vec::new(),
         };
         fs::create_dir(&plugin_manager.path).err();
         plugin_manager
     }
 }
-
 
 impl PluginManager {
     //插件目录下所有插件
@@ -113,17 +106,26 @@ impl PluginManager {
                 }
             };
             if path.is_file() && match_ext {
-                unsafe { self.load_extend(path) }.unwrap();
+                let file_name = path.file_name().unwrap().to_str().unwrap();
+                unsafe { self.load_extend(file_name) }.unwrap();
             }
         }
         PlguninResult::Ok(())
     }
 
-    ///加载插件
-    unsafe fn load_extend<P: AsRef<OsStr>>(&mut self, filename: P) -> Result<(), String> {
+    /**
+     *
+     * warn !!!
+     *
+     * filename in plugins-> files error
+     * "ibplugin.so"
+     *
+     * unsafe { plugin.load_extend("libplugin.so") };
+     */
+    unsafe fn load_extend(&mut self, filename: &str) -> Result<(), String> {
         type PluginTraitCreator = unsafe fn() -> *mut dyn PluginTrait;
-
-        let lib = Library::new(filename.as_ref()).or(Err({})).unwrap();
+        let path = format!("{}/{}", self.path.as_str(), filename);
+        let lib = Library::new(path).or(Err({})).unwrap();
 
         self.loaded_libraries.push(lib);
         let lib = self.loaded_libraries.last().unwrap();
@@ -133,7 +135,7 @@ impl PluginManager {
         let extend = Box::from_raw(boxed_raw);
         extend.load();
         let plugin = extend.register();
-        self.plugin_hashmap
+        self.plugins
             .insert(plugin.name.to_string(), Arc::new(extend));
 
         Ok(())
@@ -141,23 +143,49 @@ impl PluginManager {
 
     ///卸载全部插件
     pub fn unload_all(&mut self) {
-        for (_name, plgunin) in &self.plugin_hashmap {
+        for (_name, plgunin) in &self.plugins {
             plgunin.unload();
         }
-        self.plugin_hashmap.clear();
+        self.plugins.clear();
     }
 
-    ///卸载全部插件
+    ///重载全部插件
     pub fn reload_all(&mut self) {
-        for (_name, plgunin) in &self.plugin_hashmap {
-            plgunin.reload();
-        }
-        self.plugin_hashmap.clear();
+        self.plugins.clear();
+        self.load_all();
     }
 
-    ///获取插件指针
+    ///获取插件
     pub fn select<T: Into<String>>(&self, target: T) -> PlguninResult<Arc<Box<dyn PluginTrait>>> {
         let key: String = target.into();
-        PlguninResult::Ok(self.plugin_hashmap.get(&key).map(|v| v.clone()).unwrap())
+        let plugin = self.plugins.get(&key).map(|v| v.clone());
+        match plugin {
+            Some(plugin) => PlguninResult::Ok(plugin),
+            None => PlguninResult::Err,
+        }
     }
+
+}
+
+#[test]
+fn test() {
+    let mut plugin_manager = PluginManager::default();
+    plugin_manager.load_all();
+    println!("当前剩余插件 {}", plugin_manager.plugins.len());
+    plugin_manager.unload_all();
+    println!("当前剩余插件 {}", plugin_manager.plugins.len());
+    
+    unsafe { plugin_manager.load_extend("libplugin.so") };
+
+    let plugin_na = plugin_manager.select("plugin_manager_lib");
+    match plugin_na {
+        PlguninResult::Ok(plugin) => {
+            plugin.unload();
+            println!("插件存在");
+        }
+        PlguninResult::Err => {
+            println!("插件不存在")
+        }
+    }
+    println!("当前剩余插件 {}", plugin_manager.plugins.len());
 }
