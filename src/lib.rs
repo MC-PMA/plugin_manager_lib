@@ -63,6 +63,7 @@ pub enum PlguninResult<T> {
 use libloader::libloading::{Library, Symbol};
 use std::{collections::HashMap, fs, sync::Arc};
 
+#[derive(Debug)]
 pub struct PluginManager {
     path: String,
     plugins: HashMap<String, Arc<Box<dyn PluginTrait>>>,
