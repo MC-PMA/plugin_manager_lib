@@ -7,7 +7,7 @@ pub trait PluginTrait: Send + Sync {
     fn unload(&self) {}
 }
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone,Serialize)]
 pub struct Plugin {
     pub name: String,
     pub version: String,
@@ -29,45 +29,20 @@ impl Default for Plugin {
     }
 }
 
-// impl Plugin {
-//     /// set plugin name
-//     fn set_name(&mut self, name: String) -> &Self {
-//         self.name = name;
-//         self
-//     }
-
-//     /// set plugin version
-//     fn set_version(&mut self, version: String) -> &Self {
-//         self.version = version;
-//         self
-//     }
-
-//     /// set plugin author
-//     fn set_author(&mut self, author: String) -> &Self {
-//         self.author = author;
-//         self
-//     }
-
-//     /// set plugin explain
-//     fn set_explain(&mut self, explain: String) -> &Self {
-//         self.explain = explain;
-//         self
-//     }
-// }
-
 pub enum PlguninResult<T> {
     Ok(T),
     Err,
 }
 
 use libloader::libloading::{Library, Symbol};
+use serde::Serialize;
 use std::{collections::HashMap, fs, sync::Arc};
 
-#[derive(Debug)]
 pub struct PluginManager {
     path: String,
-    plugins: HashMap<String, Arc<Box<dyn PluginTrait>>>,
-    loaded_libraries: Vec<Library>,
+    pub plugins: HashMap<String, Arc<Box<dyn PluginTrait>>>,
+    pub loaded_libraries: Vec<Library>,
+    pub plugin_structs: HashMap<String, Box<Plugin>>,
 }
 
 impl Default for PluginManager {
@@ -76,6 +51,7 @@ impl Default for PluginManager {
             path: "./plugins".to_owned(),
             plugins: HashMap::new(),
             loaded_libraries: Vec::new(),
+            plugin_structs: HashMap::new(),
         };
         fs::create_dir(&plugin_manager.path).err();
         plugin_manager
@@ -134,12 +110,25 @@ impl PluginManager {
         let boxed_raw = constructor();
 
         let extend = Box::from_raw(boxed_raw);
-        extend.load();
-        let plugin = extend.register();
-        self.plugins
-            .insert(plugin.name.to_string(), Arc::new(extend));
 
+        
+        let plugin = extend.register();
+        
+        extend.load();
+
+        self.plugins.insert(plugin.clone().name, Arc::new(extend));
+
+        self.plugin_structs
+            .insert(plugin.clone().name, Box::new(plugin));
         Ok(())
+    }
+
+    ///卸载指定插件
+    pub fn unload_plugin<T: Into<String>>(&self, target: T) {
+        let key: String = target.into();
+        for (_name, plgunin) in &self.plugins.get_key_value(&key) {
+            plgunin.unload();
+        }
     }
 
     ///卸载全部插件
@@ -156,7 +145,7 @@ impl PluginManager {
         self.load_all();
     }
 
-    ///获取插件
+    ///获取插件trait
     pub fn select<T: Into<String>>(&self, target: T) -> PlguninResult<Arc<Box<dyn PluginTrait>>> {
         let key: String = target.into();
         let plugin = self.plugins.get(&key).map(|v| v.clone());
@@ -165,18 +154,27 @@ impl PluginManager {
             None => PlguninResult::Err,
         }
     }
-
 }
 
 #[test]
 fn test() {
     let mut plugin_manager = PluginManager::default();
     plugin_manager.load_all();
-    println!("当前剩余插件 {}", plugin_manager.plugins.len());
+    println!(
+        "加载全部插件-> 当前剩余插件 {}",
+        plugin_manager.plugins.len()
+    );
     plugin_manager.unload_all();
-    println!("当前剩余插件 {}", plugin_manager.plugins.len());
-    
+    println!(
+        "卸载全部插件-> 当前剩余插件 {}",
+        plugin_manager.plugins.len()
+    );
+
     unsafe { plugin_manager.load_extend("libplugin.so") };
+    println!(
+        "加载指定插件文件-> 当前剩余插件 {}",
+        plugin_manager.plugins.len()
+    );
 
     let plugin_na = plugin_manager.select("plugin_manager_lib");
     match plugin_na {
@@ -188,5 +186,22 @@ fn test() {
             println!("插件不存在")
         }
     }
-    println!("当前剩余插件 {}", plugin_manager.plugins.len());
+    println!(
+        "调用插件trait-> 当前剩余插件 {}",
+        plugin_manager.plugins.len()
+    );
+
+    plugin_manager.unload_plugin("plugin_manager_lib");
+    println!(
+        "卸载指定插件-> 当前剩余插件 {}",
+        plugin_manager.plugins.len()
+    );
+    
+    plugin_manager.reload_all();
+    println!(
+        "重载全部插件-> 当前剩余插件 {}",
+        plugin_manager.plugins.len()
+    );
+
+    
 }
