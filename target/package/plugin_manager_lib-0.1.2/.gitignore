@@ -1,0 +1,16 @@
+/target/debug
+/target/CACHEDIR.TAG
+/target/.rustdoc_fingerprint.json
+/target/.rustc_info.json
+target/doc/cfg_if
+target/doc/libloader
+target/doc/libloading
+target/doc/src
+target/doc/static.files
+target/doc/trait.impl
+target/doc/.lock
+target/doc/crates.js
+target/doc/help.html
+target/doc/search-index.js
+target/doc/settings.html
+target/doc/src-files.js

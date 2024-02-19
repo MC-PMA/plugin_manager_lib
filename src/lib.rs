@@ -121,7 +121,6 @@ impl PluginManager {
         let plugin = extend.register();
         extend.load();
         self.plugins.insert(plugin.clone().name, extend.into());
-        println!("加载插件: {}", plugin.name);
         self.plugin_structs.insert(plugin.clone().name, plugin);
 
         Ok(())
