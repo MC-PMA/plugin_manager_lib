@@ -1,4 +1,6 @@
-pub trait PluginTrait: Send + Sync {
+use std::any::Any;
+
+pub trait PluginTrait: Any + Send + Sync {
     /// 注册插件
     fn register(&self) -> Plugin;
     /// 加载插件
@@ -7,7 +9,7 @@ pub trait PluginTrait: Send + Sync {
     fn unload(&self) {}
 }
 #[repr(C)]
-#[derive(Debug, Clone,Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Plugin {
     pub name: String,
     pub version: String,
@@ -42,7 +44,7 @@ pub struct PluginManager {
     path: String,
     pub plugins: HashMap<String, Arc<Box<dyn PluginTrait>>>,
     pub loaded_libraries: Vec<Library>,
-    pub plugin_structs: HashMap<String, Box<Plugin>>,
+    pub plugin_structs: HashMap<String, Plugin>,
 }
 
 impl Default for PluginManager {
@@ -61,7 +63,7 @@ impl Default for PluginManager {
 impl PluginManager {
     //插件目录下所有插件
     pub fn load_all(&mut self) -> PlguninResult<()> {
-        let r = fs::read_dir(self.path.clone())
+        let r = fs::read_dir(PluginManager::default().path)
             .map_err(|err| println!("error to filedir->{}", err))
             .unwrap();
         for i in r {
@@ -102,68 +104,63 @@ impl PluginManager {
     unsafe fn load_extend(&mut self, filename: &str) -> Result<(), String> {
         type PluginTraitCreator = unsafe fn() -> *mut dyn PluginTrait;
         let path = format!("{}/{}", self.path.as_str(), filename);
+        // 加载动态库
         let lib = Library::new(path).or(Err({})).unwrap();
 
         self.loaded_libraries.push(lib);
         let lib = self.loaded_libraries.last().unwrap();
+
+        // 取得函数符号
         let constructor: Symbol<PluginTraitCreator> = lib.get(b"_post_plugin").unwrap();
+
+        // 调用该函数，取得 UcenterApp Trait 实例的原始指针
         let boxed_raw = constructor();
 
+        // 通过原始指针构造 Box，至此逻辑重归安全区
         let extend = Box::from_raw(boxed_raw);
-
-        
         let plugin = extend.register();
-        
         extend.load();
+        self.plugins.insert(plugin.clone().name, extend.into());
+        println!("加载插件: {}", plugin.name);
+        self.plugin_structs.insert(plugin.clone().name, plugin);
 
-        self.plugins.insert(plugin.clone().name, Arc::new(extend));
-
-        self.plugin_structs
-            .insert(plugin.clone().name, Box::new(plugin));
         Ok(())
     }
 
-    ///卸载指定插件
-    pub fn unload_plugin<T: Into<String>>(&self, target: T) {
+    // 选取指定 name 的拓展
+    pub fn select<T: Into<String>>(
+        &self,
+        target: T,
+    ) -> Option<(&std::string::String, &Arc<Box<dyn PluginTrait>>)> {
         let key: String = target.into();
-        for (_name, plgunin) in &self.plugins.get_key_value(&key) {
-            plgunin.unload();
-        }
+        self.plugins.get_key_value(&key)
     }
 
     ///卸载全部插件
     pub fn unload_all(&mut self) {
-        for (_name, plgunin) in &self.plugins {
-            plgunin.unload();
-        }
         self.plugins.clear();
+        self.plugin_structs.clear();
+        self.loaded_libraries.clear();
     }
 
     ///重载全部插件
     pub fn reload_all(&mut self) {
         self.plugins.clear();
+        self.plugin_structs.clear();
+        self.loaded_libraries.clear();
         self.load_all();
     }
-
-    ///获取插件trait
-    pub fn select<T: Into<String>>(&self, target: T) -> PlguninResult<Arc<Box<dyn PluginTrait>>> {
-        let key: String = target.into();
-        let plugin = self.plugins.get(&key).map(|v| v.clone());
-        match plugin {
-            Some(plugin) => PlguninResult::Ok(plugin),
-            None => PlguninResult::Err,
-        }
-    }
 }
-
 #[test]
 fn test() {
     let mut plugin_manager = PluginManager::default();
+    
     plugin_manager.load_all();
     println!(
         "加载全部插件-> 当前剩余插件 {}",
         plugin_manager.plugins.len()
     );
+
     plugin_manager.unload_all();
     println!(
         "卸载全部插件-> 当前剩余插件 {}",
@@ -171,37 +168,31 @@ fn test() {
     );
 
     unsafe { plugin_manager.load_extend("libplugin.so") };
+
+    match plugin_manager.select("plugin_manager_lib") {
+        Some((name, plugin)) => {
+            println!("插件存在");
+            plugin.unload()
+        }
+        None => {
+            println!("插件不存在")
+        }
+    }
+
     println!(
         "加载指定插件文件-> 当前剩余插件 {}",
         plugin_manager.plugins.len()
     );
 
-    let plugin_na = plugin_manager.select("plugin_manager_lib");
-    match plugin_na {
-        PlguninResult::Ok(plugin) => {
-            plugin.unload();
-            println!("插件存在");
-        }
-        PlguninResult::Err => {
-            println!("插件不存在")
-        }
-    }
-    println!(
-        "调用插件trait-> 当前剩余插件 {}",
-        plugin_manager.plugins.len()
-    );
-
-    plugin_manager.unload_plugin("plugin_manager_lib");
-    println!(
-        "卸载指定插件-> 当前剩余插件 {}",
-        plugin_manager.plugins.len()
-    );
-    
     plugin_manager.reload_all();
     println!(
         "重载全部插件-> 当前剩余插件 {}",
         plugin_manager.plugins.len()
     );
 
-    
+    plugin_manager.unload_all();
+    println!(
+        "卸载全部插件-> 当前剩余插件 {}",
+        plugin_manager.plugins.len()
+    );
 }
